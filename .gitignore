@@ -1,0 +1,8 @@
+node_modules/
+frontend/dist/
+backend/dist/
+data/
+.env
+.DS_Store
+coverage/
+node_modules.dataless-backup-20260920/

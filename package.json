@@ -1,0 +1,18 @@
+{
+  "name": "gomata-vision-crm",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["frontend", "backend"],
+  "engines": { "node": ">=20.18.0 <23", "npm": ">=10" },
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail -n backend,frontend -c green,cyan \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace frontend && npm run build --workspace backend",
+    "start": "npm run start --workspace backend",
+    "typecheck": "npm run typecheck --workspace frontend && npm run typecheck --workspace backend",
+    "test": "npm run test --workspace backend",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": { "concurrently": "9.2.4" }
+}
