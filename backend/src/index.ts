@@ -5,6 +5,12 @@ import { migrate, openDatabase } from './db.js';
 import { createApp } from './app.js';
 import { createDueNotifications } from './reminders.js';
 
+// npm exposes the active lifecycle script on every platform. This keeps the
+// start command production-safe without relying on Unix-only VAR=value syntax.
+if (!process.env.NODE_ENV && process.env.npm_lifecycle_event === 'start') {
+  process.env.NODE_ENV = 'production';
+}
+
 const db = await openDatabase();
 await db.query('SELECT 1');
 await migrate(db);

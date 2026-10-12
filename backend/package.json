@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development node --env-file-if-exists=.env --import tsx src/index.ts",
+    "dev": "node --env-file-if-exists=.env --import tsx src/index.ts",
     "build": "tsc",
-    "start": "NODE_ENV=production node --env-file-if-exists=.env dist/index.js",
+    "start": "node --env-file-if-exists=.env dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "node --env-file-if-exists=.env --import tsx --test src/*.test.ts"
   },

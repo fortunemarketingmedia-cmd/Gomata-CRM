@@ -4303,3 +4303,94 @@ tbody tr:last-child td { border-bottom: 0; }
   .event-detail-card { grid-template-columns: 1fr; }
   .event-detail-card > p { grid-column: auto; }
 }
+
+/* ========================================================================== 
+   GOMATA VISION WEBSITE ALIGNMENT
+   White surfaces, charcoal type and restrained magenta accents mirror the
+   client website while preserving the CRM's compact information density.
+   ========================================================================== */
+:root {
+  --primary: #913983;
+  --primary-hover: #7c2f70;
+  --primary-active: #68265e;
+  --primary-subtle: #f8f0f7;
+  --primary-subtle-hover: #f2e4f0;
+  --primary-border: #e7cfe3;
+  --primary-ring: rgba(145, 57, 131, .15);
+  --bg-app: #f4f6f8;
+  --bg-subtle: #f6f7f9;
+  --border-color: #e2e6eb;
+  --text-primary: #24272d;
+  --text-secondary: #4f5662;
+  --text-muted: #7a828e;
+}
+
+.sidebar-head { justify-content: flex-end; }
+.sidebar.collapsed .sidebar-head { justify-content: center; }
+
+.topbar {
+  height: 68px;
+  background: rgba(255, 255, 255, .98);
+  border-bottom-color: #e4e7eb;
+  box-shadow: 0 1px 3px rgba(31, 38, 48, .04);
+}
+
+.top-actions { gap: 9px; }
+.top-actions > .brand.wordmark {
+  width: 72px;
+  height: 52px;
+  margin-left: 3px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.top-actions > .brand.wordmark img {
+  display: block;
+  width: 54px;
+  height: 48px;
+  object-fit: contain;
+}
+
+.page { padding-top: 28px; }
+.page-heading h1, .dashboard-welcome h1 { color: #24272d; font-weight: 650; }
+.card { border-color: #e1e5ea; box-shadow: 0 1px 2px rgba(31, 38, 48, .025); }
+.card-head { background: #fff; }
+.dashboard-kpi:hover, .module-card:hover, .plot-card:hover { border-color: #d7dce2; box-shadow: 0 6px 18px rgba(31, 38, 48, .055); }
+.dashboard-kpi > span, .analytics-kpi > span { border: 1px solid var(--primary-border); }
+.tabs { border-bottom-color: #e1e5ea; }
+.tabs button.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+.analytics-card, .trend-card { overflow: hidden; }
+.analytics-card .card-head, .trend-card .card-head { background: #fff; }
+.bar-chart i { height: 20px; background: #eff1f4; border-radius: 5px; }
+.bar-chart i b { background-image: linear-gradient(90deg, #913983, #b85aa8); }
+.chart-summary { text-align: right; }
+.chart-summary small { display: block; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.chart-summary strong { display: block; margin-top: 2px; color: var(--text-primary); font-size: 17px; }
+.line-chart { height: 300px; padding: 22px 28px 38px; background: #fff; }
+.line-chart svg { height: 230px; }
+.chart-gridline { stroke: #e5e8ec; stroke-dasharray: 2 2; }
+.trend-area { pointer-events: none; }
+.trend-line { stroke-width: 3; filter: drop-shadow(0 2px 2px rgba(145, 57, 131, .12)); }
+.line-chart-points { position: absolute; left: 28px; right: 28px; top: 22px; height: 230px; pointer-events: none; }
+.line-chart-points span { position: absolute; width: 9px; height: 9px; border: 2px solid var(--primary); border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(145, 57, 131, .18); transform: translate(-50%, -50%); }
+.line-chart-labels { left: 28px; right: 28px; bottom: 16px; }
+
+@media (max-width: 680px) {
+  .top-actions > .brand.wordmark { width: 58px; height: 46px; padding-left: 8px; }
+  .top-actions > .brand.wordmark img { width: 44px; height: 42px; }
+  .line-chart { height: 250px; padding-left: 18px; padding-right: 18px; }
+  .line-chart svg { height: 185px; }
+  .line-chart-points { left: 18px; right: 18px; height: 185px; }
+  .line-chart-labels { left: 18px; right: 18px; }
+}
+
+.inventory-status.paid { background: #ecfdf5; color: #047857; }
+.inventory-status.generated { background: #fffbeb; color: #b45309; }
+.inventory-status.approved { background: #eff6ff; color: #1d4ed8; }
+.partner-summary { margin-bottom: 16px; }
+.bookings-table { margin-bottom: 16px; }
+.document-list > a > svg:last-child { margin-left: auto; }

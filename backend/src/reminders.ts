@@ -11,4 +11,23 @@ export async function createDueNotifications(db: Db, userId?: number) {
     FROM followups f JOIN leads l ON l.id=f.lead_id
     WHERE f.status='PENDING' AND f.scheduled_at<=$1 ${userClause}
     ON CONFLICT(user_id,followup_id) DO NOTHING`, params);
+
+  const leadParams:unknown[]=[];
+  const leadUserClause=userId?' AND l.assigned_to=$1':'';
+  if(userId)leadParams.push(userId);
+  await db.query(`INSERT INTO notifications(user_id,title,message,notification_type,action_url)
+    SELECT l.assigned_to,'Lead response SLA overdue',l.name || ' • ' || l.contact || ' • No first contact recorded','SLA','/gre/'||l.id
+    FROM leads l WHERE l.archived_at IS NULL AND l.first_contacted_at IS NULL AND l.response_sla_due_at IS NOT NULL AND l.response_sla_due_at<=CURRENT_TIMESTAMP${leadUserClause}
+    ON CONFLICT DO NOTHING`,leadParams);
+  await db.query(`UPDATE leads l SET response_sla_alerted_at=COALESCE(response_sla_alerted_at,CURRENT_TIMESTAMP)
+    WHERE l.archived_at IS NULL AND l.first_contacted_at IS NULL AND l.response_sla_due_at<=CURRENT_TIMESTAMP${leadUserClause}`,leadParams);
+
+  const paymentParams:unknown[]=[];
+  const paymentUserClause=userId?' AND l.assigned_to=$1':'';
+  if(userId)paymentParams.push(userId);
+  await db.query(`INSERT INTO notifications(user_id,title,message,notification_type,action_url)
+    SELECT l.assigned_to,'Payment milestone due',b.customer_name || ' • ' || p.name || ' / ' || pl.plot_number || ' • ' || s.label,'PAYMENT_DUE','/inventory/bookings/'||b.id||'?step='||s.id
+    FROM booking_steps s JOIN plot_bookings b ON b.id=s.booking_id JOIN plots pl ON pl.id=b.plot_id JOIN realestate_projects p ON p.id=pl.project_id JOIN leads l ON l.id=b.lead_id
+    WHERE s.status='PENDING' AND s.due_date IS NOT NULL AND s.due_date<=CURRENT_DATE+7 AND b.status<>'CANCELLED'${paymentUserClause}
+    ON CONFLICT DO NOTHING`,paymentParams);
 }
