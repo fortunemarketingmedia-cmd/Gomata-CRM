@@ -22,6 +22,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { CampaignsPage } from './pages/CampaignsPage';
 import { SiteVisitsPage } from './pages/SiteVisitsPage';
 import { ChannelPartnersPage } from './pages/ChannelPartnersPage';
+import { PartnerPortalPage } from './pages/PartnerPortalPage';
 import './styles.css';
 
 function Protected() {
@@ -47,8 +48,12 @@ function LoginRoute() {
   return user ? <Navigate to="/" replace /> : <LoginPage />;
 }
 
+const portalHost=window.location.hostname.toLowerCase();
+const partnerPortal=portalHost.startsWith('partner.')||portalHost.startsWith('partners.')||window.location.pathname.startsWith('/partner-portal');
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    {partnerPortal?<ToastProvider><ErrorBoundary><PartnerPortalPage/></ErrorBoundary></ToastProvider>:
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
@@ -82,6 +87,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           </Routes></ErrorBoundary>
         </ToastProvider>
       </AuthProvider>
-    </BrowserRouter>
+    </BrowserRouter>}
   </React.StrictMode>
 );

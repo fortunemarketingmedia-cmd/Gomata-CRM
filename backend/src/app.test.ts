@@ -1033,3 +1033,43 @@ test('customer documents and channel partner payout reporting work end to end',a
   assert.equal(report.body.commissions[0].reference,'UTR-PAYOUT-001');
   assert.equal(Number(report.body.summary.commission_paid),50000);
 });
+
+test('partner portal KYC, manual metrics and lead deletion are isolated and operational',async()=>{
+  const{db,agent}=await setup();await login(agent);
+  const created=await agent.post('/api/channel-partners').send({name:'Portal Partner',company:'Portal Realty',phone:'9000044444',email:'partner@example.com',password:'Partner@123',city:'Pune',aadhaarNumber:'123412341234',panNumber:'ABCDE1234F',reraNumber:'',commissionType:'PERCENT',commissionValue:2});
+  assert.equal(created.status,201);
+  const partnerId=created.body.partner.id;
+  const partnerAgent=request.agent(createApp(db));
+  assert.equal((await partnerAgent.post('/api/partner-auth/login').send({email:'partner@example.com',password:'Partner@123'})).status,200);
+  const partnerLead=await partnerAgent.post('/api/partner/leads').send({name:'Partner Customer',contact:'9000045555',email:'customer@example.com',city:'Pune',propertyType:'Plot',budgetMin:1000000,budgetMax:2500000,preferredLocation:'Nashik',purchasePurpose:'INVESTMENT',purchaseTimeline:'1_3_MONTHS',remark:'Interested in an investment plot'});
+  assert.equal(partnerLead.status,201);
+  const partnerLeadId=partnerLead.body.lead.id;
+  const adminPartnerLeads=await agent.get(`/api/leads?source=CHANNEL_PARTNER&channelPartnerId=${partnerId}`);
+  assert.equal(adminPartnerLeads.status,200);
+  assert.equal(adminPartnerLeads.body.leads.some((item:any)=>item.id===partnerLeadId&&item.channel_partner_name==='Portal Partner'),true);
+  assert.equal((await agent.post(`/api/leads/${partnerLeadId}/pipeline-transition`).send({toStage:'CONTACTED',contactOutcome:'INTERESTED',leadType:'HOT',remark:'Customer contacted successfully'})).status,200);
+  const progressedDashboard=await partnerAgent.get('/api/partner/dashboard');
+  assert.equal(progressedDashboard.body.leads.find((item:any)=>item.id===partnerLeadId)?.workflow_status,'CONTACTED');
+  const upload=async(documentType:string,fileName:string)=>partnerAgent.post('/api/partner/documents').send({documentType,fileName,mimeType:'text/plain',data:`data:text/plain;base64,${Buffer.from(fileName).toString('base64')}`});
+  assert.equal((await upload('AADHAAR','aadhaar.txt')).status,201);
+  assert.equal((await upload('PAN','pan.txt')).status,201);
+  const documents=(await agent.get(`/api/channel-partners/${partnerId}/documents`)).body.documents;
+  assert.equal(documents.length,2);
+  const pdfUpload=await partnerAgent.post('/api/partner/documents').send({documentType:'RERA_CERTIFICATE',fileName:'rera.pdf',mimeType:'application/pdf',data:`data:application/pdf;base64,${Buffer.from('%PDF-1.4').toString('base64')}`});
+  assert.equal(pdfUpload.status,201);
+  for(const client of [partnerAgent,agent]){const base=client===agent?'/api/channel-partners/documents':'/api/partner/documents';
+    const inline=await client.get(`${base}/${pdfUpload.body.document.id}/download?inline=1`);assert.match(String(inline.headers['content-disposition']),/^inline/);assert.equal(inline.headers['content-type'],'application/pdf');
+    const attached=await client.get(`${base}/${pdfUpload.body.document.id}/download`);assert.match(String(attached.headers['content-disposition']),/^attachment/);
+    const textDoc=await client.get(`${base}/${documents[0].id}/download?inline=1`);assert.match(String(textDoc.headers['content-disposition']),/^attachment/);}
+  assert.equal((await agent.patch(`/api/channel-partners/${partnerId}/verification`).send({status:'VERIFIED'})).status,200);
+  assert.equal((await agent.patch(`/api/channel-partners/${partnerId}/metrics`).send({leads:12,bookings:3,commission:75000,paid:25000})).status,200);
+  const dashboard=await partnerAgent.get('/api/partner/dashboard');
+  assert.equal(dashboard.status,200);
+  assert.equal(dashboard.body.partner.leads,12);
+  assert.equal(Number(dashboard.body.partner.commission_total),75000);
+  assert.equal(dashboard.body.documents.every((item:any)=>item.verification_status==='VERIFIED'),true);
+  assert.equal((await partnerAgent.get('/api/leads')).status,401);
+  const lead=(await agent.post('/api/leads').send({...baseLead(),contact:'9000055555'})).body.lead;
+  assert.equal((await agent.delete(`/api/leads/${lead.id}`)).status,204);
+  assert.equal((await agent.get(`/api/leads/${lead.id}`)).status,404);
+});

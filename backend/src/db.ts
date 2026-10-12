@@ -273,6 +273,14 @@ export async function migrate(db: Db) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS channel_partner_sessions (
+      id BIGSERIAL PRIMARY KEY,
+      partner_id BIGINT NOT NULL REFERENCES channel_partners(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS lead_enquiries (
       id BIGSERIAL PRIMARY KEY,
       lead_id BIGINT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
@@ -499,9 +507,21 @@ export async function migrate(db: Db) {
     ALTER TABLE plot_bookings ADD COLUMN IF NOT EXISTS payment_plan_id BIGINT REFERENCES payment_plans(id) ON DELETE SET NULL;
     ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS rera_number VARCHAR(80) NOT NULL DEFAULT '';
     ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS gstin VARCHAR(20) NOT NULL DEFAULT '';
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS aadhaar_number VARCHAR(12) NOT NULL DEFAULT '';
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS pan_number VARCHAR(10) NOT NULL DEFAULT '';
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS password_hash TEXT;
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS manual_leads INTEGER CHECK(manual_leads >= 0);
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS manual_bookings INTEGER CHECK(manual_bookings >= 0);
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS manual_commission NUMERIC(16,2) CHECK(manual_commission >= 0);
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS manual_paid NUMERIC(16,2) CHECK(manual_paid >= 0);
     ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS verification_status VARCHAR(15) NOT NULL DEFAULT 'PENDING';
     ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
     ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS verified_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE channel_partner_documents ALTER COLUMN uploaded_by DROP NOT NULL;
+    ALTER TABLE channel_partner_documents ADD COLUMN IF NOT EXISTS uploaded_by_partner BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE channel_partner_documents ADD COLUMN IF NOT EXISTS verification_status VARCHAR(15) NOT NULL DEFAULT 'PENDING';
+    ALTER TABLE channel_partner_documents ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+    ALTER TABLE channel_partner_documents ADD COLUMN IF NOT EXISTS verified_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
     CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(LOWER(email));
     CREATE INDEX IF NOT EXISTS idx_leads_alt_phone ON leads(alternate_phone);
     CREATE INDEX IF NOT EXISTS idx_leads_campaign ON leads(campaign_id);
@@ -514,6 +534,8 @@ export async function migrate(db: Db) {
     CREATE INDEX IF NOT EXISTS idx_plan_project ON payment_plans(project_id,active);
     CREATE INDEX IF NOT EXISTS idx_commission_slabs_partner ON commission_slabs(partner_id,min_bookings);
     CREATE INDEX IF NOT EXISTS idx_lead_documents_lead ON lead_documents(lead_id,created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_partner_sessions_token ON channel_partner_sessions(token_hash,expires_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_partners_email ON channel_partners(LOWER(email)) WHERE email IS NOT NULL AND email<>'';
     CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_event_user ON notifications(user_id,event_id) WHERE event_id IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_action_user ON notifications(user_id,notification_type,action_url) WHERE action_url IS NOT NULL AND notification_type IN ('SLA','PAYMENT_DUE');
   `);

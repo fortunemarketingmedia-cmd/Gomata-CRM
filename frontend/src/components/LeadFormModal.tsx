@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowRight } from '../icons';
+import { AlertTriangle, ArrowRight, RotateCcw } from '../icons';
 import { api, ApiError } from '../lib/api';
 import type { Activity, Lead, LeadSource, LeadType, User } from '../types';
 import { StatusBadge } from './StatusBadge';
@@ -91,7 +91,7 @@ export function LeadFormModal({
           if (!duplicate) return checking[row.key] ? <small>Checking existing records…</small> : null;
           return <div className="duplicate-card"><AlertTriangle/><div><strong>Existing Lead Found</strong><p>{duplicate.lead.name} · {duplicate.lead.contact}</p><StatusBadge type={duplicate.lead.lead_type}/>{duplicate.history.slice(0, 3).map(activity => <small key={activity.id}>{activity.content}</small>)}</div><button type="button" onClick={() => location.assign(`/gre/${duplicate.lead.id}`)}>View full history <ArrowRight/></button></div>;
         }}/>
-        <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button type="submit" className="primary" disabled={busy || Boolean(Object.keys(duplicates).length)}>{busy ? 'Saving…' : `Save ${rows.length} lead${rows.length === 1 ? '' : 's'}`}</button></div>
+        <div className="modal-actions"><button type="button" className="text-button" onClick={()=>{setRows([createLeadBatchRow()]);setDuplicates({})}}><RotateCcw/>Clear form</button><button type="button" className="secondary" onClick={onClose}>Cancel</button><button type="submit" className="primary" disabled={busy || Boolean(Object.keys(duplicates).length)}>{busy ? 'Saving…' : `Save ${rows.length} lead${rows.length === 1 ? '' : 's'}`}</button></div>
       </form>
     </div>
   </div>;

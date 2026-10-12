@@ -29,6 +29,7 @@ import {
   Sparkles,
   ThermometerSnowflake,
   ThermometerSun,
+  Trash2,
   UserCheck,
   UserPlus,
   UserRound,
@@ -85,6 +86,7 @@ export function LeadDetailPage() {
   const [query] = useSearchParams();
   const { user } = useAuth();
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const deleteLead=async()=>{if(!data||!window.confirm(`Delete ${data.lead.name}? This removes the lead from active CRM lists.`))return;try{await api(`/leads/${data.lead.id}`,{method:'DELETE'});toast.show('Lead deleted');nav('/gre')}catch(error:any){toast.show(error.message,'error')}};
 
   const load = () =>
     api<Details>(`/leads/${id}`)
@@ -208,6 +210,7 @@ export function LeadDetailPage() {
           </div>
         </div>
         <div className="hero-actions">
+          {canManage&&<button className="secondary danger-text" onClick={()=>void deleteLead()}><Trash2/>Delete Lead</button>}
           <button className="secondary" onClick={() => setEditing(!editing)}>
             {editing ? <X /> : <Pencil />}
             {editing ? 'Close Edit' : 'Edit Lead'}
