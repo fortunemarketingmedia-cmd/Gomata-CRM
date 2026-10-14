@@ -13,7 +13,6 @@ import {
   Columns3
   ,CalendarDays
   ,Building2
-  ,Target
   ,UsersRound
   ,MapPin
   ,Search
@@ -33,7 +32,6 @@ const navGroups = [
     ['Calendar', '/calendar', CalendarDays]
   ] },
   { label: 'Growth', items: [
-    ['Campaigns', '/campaigns', Target],
     ['Channel Partners', '/channel-partners', UsersRound]
   ] },
   { label: 'Operations', items: [
@@ -49,7 +47,6 @@ const titles: Record<string, string> = {
   '/sales-pipeline': 'Sales Pipeline',
   '/follow-ups': 'Follow-ups & Visits',
   '/calendar': 'Operations Calendar',
-  '/campaigns': 'Campaign Management',
   '/site-visits': 'Site Visits',
   '/channel-partners': 'Channel Partners',
   '/inventory': 'Real Estate Inventory',
@@ -119,7 +116,6 @@ export function AppShell() {
     <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className={`${open ? 'sidebar open' : 'sidebar'} ${collapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-head">
-          <Brand />
           <button
             className="desktop-collapse"
             aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
@@ -205,6 +201,7 @@ export function AppShell() {
               <CircleUserRound />
               <span>{user?.name?.split(' ')[0] || 'Admin'}</span>
             </button>
+            <Brand />
           </div>
         </header>
 

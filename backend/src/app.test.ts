@@ -993,3 +993,83 @@ test('calendar allocations and real-estate booking workflow persist end to end',
 test('digital lead capture normalizes Indian phones and merges repeat enquiries',async()=>{const{db,agent}=await setup();const first=await agent.post('/api/leads/capture').send({name:'Digital Buyer',phone:'+91 98765 43210',email:'buyer@example.com',platform:'META',campaignName:'Monsoon Plots',externalLeadId:'meta-101',message:'Needs an investment plot'});assert.equal(first.status,201);assert.equal(first.body.duplicate,false);assert.equal(first.body.lead.contact,'9876543210');const repeat=await agent.post('/api/leads/capture').send({name:'Digital Buyer',phone:'09876543210',email:'buyer@example.com',platform:'WHATSAPP',campaignName:'WhatsApp Retargeting',externalLeadId:'wa-202'});assert.equal(repeat.status,200);assert.equal(repeat.body.duplicate,true);assert.equal(repeat.body.lead.id,first.body.lead.id);const counts=(await db.query<{leads:string;enquiries:string}>('SELECT (SELECT COUNT(*) FROM leads)::text leads,(SELECT COUNT(*) FROM lead_enquiries)::text enquiries')).rows[0];assert.equal(Number(counts.leads),1);assert.equal(Number(counts.enquiries),2);});
 
 test('campaign, site visit and channel partner modules persist operational records',async()=>{const{agent}=await setup();await login(agent);const campaign=await agent.post('/api/campaigns').send({name:'Festival Investment Drive',platform:'META',budget:250000,status:'ACTIVE',description:'Digital campaign'});assert.equal(campaign.status,201);const lead=(await agent.post('/api/leads').send({...baseLead(),contact:'9999912345',leadSource:'META'})).body.lead;const visitAt=new Date(Date.now()+86400000).toISOString();const visit=await agent.post('/api/site-visits').send({leadId:lead.id,scheduledAt:visitAt,notes:'Visit project entrance'});assert.equal(visit.status,201);assert.equal((await agent.get('/api/site-visits')).body.visits.length,1);assert.equal((await agent.patch(`/api/site-visits/${visit.body.visit.id}`).send({status:'COMPLETED',feedback:'Customer liked the corner plots',customerInterest:'HIGH'})).status,200);const partner=await agent.post('/api/channel-partners').send({name:'Sunrise Realty',company:'Sunrise Realty',phone:'+91 98888 77777',city:'Pune',commissionType:'PERCENT',commissionValue:2});assert.equal(partner.status,201);const partners=(await agent.get('/api/channel-partners')).body.partners;assert.equal(partners[0].phone,'9888877777');assert.equal(partners[0].name,'Sunrise Realty');const campaigns=(await agent.get('/api/campaigns')).body.campaigns;assert.equal(campaigns[0].name,'Festival Investment Drive');});
+
+test('proposal completion features work together without changing the existing booking flow',async()=>{const{db,agent}=await setup();await login(agent);const executive=(await db.query<any>("INSERT INTO users(name,email,password_hash,role) VALUES ('Sales One','sales@example.com',$1,'SALES_EXECUTIVE') RETURNING id",[bcrypt.hashSync('Sales@123',4)])).rows[0];const captured=await agent.post('/api/leads/capture').send({name:'Auto Assigned Buyer',phone:'9000011111',platform:'WEBSITE'});assert.equal(captured.status,201);assert.equal(Number(captured.body.lead.assigned_to),Number(executive.id));assert.ok(captured.body.lead.response_sla_due_at);
+  const contacted=await agent.post(`/api/leads/${captured.body.lead.id}/pipeline-transition`).send({toStage:'CONTACTED',remark:'Called within SLA',contactOutcome:'INTERESTED'});assert.equal(contacted.status,200);assert.ok(contacted.body.lead.first_contacted_at);
+  await db.query("UPDATE leads SET workflow_status='WON',status='CONVERTED' WHERE id=$1",[captured.body.lead.id]);const project=(await agent.post('/api/inventory/projects').send({name:'Hierarchy Heights',location:'Pune',assignmentUserIds:[executive.id]})).body.project;const listedProject=(await agent.get('/api/inventory/projects')).body.projects[0];assert.deepEqual(listedProject.assigned_user_ids.map(Number),[Number(executive.id)]);const campaign=(await agent.post('/api/campaigns').send({name:'Hierarchy Campaign',platform:'META',projectId:project.id,budget:10000,status:'ACTIVE'})).body.campaign;const routed=await agent.post('/api/leads/capture').send({name:'Project Routed Buyer',phone:'9000011112',platform:'META',campaignId:campaign.id});assert.equal(Number(routed.body.lead.assigned_to),Number(executive.id));const plot=(await agent.post('/api/inventory/plots').send({projectId:project.id,plotNumber:'1203',phase:'Phase 1',tower:'Tower A',wing:'East',floor:'12',area:950,basePrice:5000000,minimumToken:100000})).body.plot;assert.equal(plot.tower,'Tower A');assert.equal((await agent.post(`/api/inventory/plots/${plot.id}/hold`).send({hours:48,leadId:captured.body.lead.id,reason:'Token processing'})).status,201);assert.equal((await agent.get('/api/inventory/plots')).body.plots[0].status,'BLOCKED');assert.equal((await agent.delete(`/api/inventory/plots/${plot.id}/hold`)).status,204);
+  const plan=(await agent.post('/api/inventory/payment-plans').send({projectId:project.id,name:'Construction Plan',milestones:[{label:'Booking',percentage:10,dueDays:0},{label:'Development',percentage:70,dueDays:90},{label:'Registry',percentage:20,dueDays:180}]})).body.plan;const booking=(await agent.post(`/api/inventory/plots/${plot.id}/bookings`).send({leadId:captured.body.lead.id,quotedPrice:5000000,tokenAmount:100000,bookingDate:new Date().toISOString().slice(0,10),paymentPlanId:plan.id}));assert.equal(booking.status,201);const detail=await agent.get(`/api/inventory/bookings/${booking.body.booking.id}`);assert.equal(detail.body.steps.length,3);assert.equal(Number(detail.body.steps[0].target_amount),500000);assert.equal((await agent.get(`/api/inventory/bookings/${booking.body.booking.id}/demand-notice`)).headers['content-type'],'application/pdf');assert.equal((await agent.get(`/api/inventory/payments/${detail.body.payments[0].id}/receipt`)).headers['content-type'],'application/pdf');
+  const analytics=await agent.get('/api/analytics');assert.ok(Array.isArray(analytics.body.teamPerformance));assert.equal(typeof analytics.body.summary.salesVelocityDays,'number');
+});
+
+test('customer documents and channel partner payout reporting work end to end',async()=>{
+  const{db,agent}=await setup();await login(agent);
+  const lead=(await agent.post('/api/leads').send({...baseLead(),contact:'9000022222'})).body.lead;
+  const content='verified customer identity';
+  const uploaded=await agent.post(`/api/leads/${lead.id}/documents`).send({documentType:'KYC',fileName:'customer-kyc.txt',mimeType:'text/plain',data:`data:text/plain;base64,${Buffer.from(content).toString('base64')}`});
+  assert.equal(uploaded.status,201);
+  const leadDetail=await agent.get(`/api/leads/${lead.id}`);
+  assert.equal(leadDetail.body.documents[0].file_name,'customer-kyc.txt');
+  const downloaded=await agent.get(`/api/leads/documents/${uploaded.body.document.id}/download`);
+  assert.equal(downloaded.status,200);
+  assert.match(downloaded.headers['content-type'],/^text\/plain/);
+  assert.equal(downloaded.text,content);
+
+  const project=(await agent.post('/api/inventory/projects').send({name:'Partner Project',location:'Pune'})).body.project;
+  const partner=(await agent.post('/api/channel-partners').send({name:'Trusted Realty',company:'Trusted Realty',phone:'9000033333',city:'Pune',commissionType:'PERCENT',commissionValue:2})).body.partner;
+  await db.query("UPDATE leads SET workflow_status='WON',status='CONVERTED',channel_partner_id=$1 WHERE id=$2",[partner.id,lead.id]);
+  const plot=(await agent.post('/api/inventory/plots').send({projectId:project.id,plotNumber:'P-101',area:1000,basePrice:2500000,minimumToken:100000})).body.plot;
+  const booking=await agent.post(`/api/inventory/plots/${plot.id}/bookings`).send({leadId:lead.id,quotedPrice:2500000,tokenAmount:100000,bookingDate:new Date().toISOString().slice(0,10),channelPartnerId:partner.id,steps:[{key:'TOKEN',label:'Token received'}]});
+  assert.equal(booking.status,201);
+  let report=await agent.get('/api/channel-partners/report');
+  assert.equal(report.status,200);
+  assert.equal(report.body.summary.total_partners,1);
+  assert.equal(report.body.performance[0].bookings,1);
+  assert.equal(Number(report.body.commissions[0].amount),50000);
+  const commissionId=report.body.commissions[0].id;
+  assert.equal((await agent.patch(`/api/commissions/${commissionId}`).send({status:'APPROVED'})).status,200);
+  assert.equal((await agent.patch(`/api/commissions/${commissionId}`).send({status:'PAID',reference:'UTR-PAYOUT-001'})).status,200);
+  report=await agent.get('/api/channel-partners/report');
+  assert.equal(report.body.commissions[0].status,'PAID');
+  assert.equal(report.body.commissions[0].reference,'UTR-PAYOUT-001');
+  assert.equal(Number(report.body.summary.commission_paid),50000);
+});
+
+test('partner portal KYC, manual metrics and lead deletion are isolated and operational',async()=>{
+  const{db,agent}=await setup();await login(agent);
+  const created=await agent.post('/api/channel-partners').send({name:'Portal Partner',company:'Portal Realty',phone:'9000044444',email:'partner@example.com',password:'Partner@123',city:'Pune',aadhaarNumber:'123412341234',panNumber:'ABCDE1234F',reraNumber:'',commissionType:'PERCENT',commissionValue:2});
+  assert.equal(created.status,201);
+  const partnerId=created.body.partner.id;
+  const partnerAgent=request.agent(createApp(db));
+  assert.equal((await partnerAgent.post('/api/partner-auth/login').send({email:'partner@example.com',password:'Partner@123'})).status,200);
+  const partnerLead=await partnerAgent.post('/api/partner/leads').send({name:'Partner Customer',contact:'9000045555',email:'customer@example.com',city:'Pune',propertyType:'Plot',budgetMin:1000000,budgetMax:2500000,preferredLocation:'Nashik',purchasePurpose:'INVESTMENT',purchaseTimeline:'1_3_MONTHS',remark:'Interested in an investment plot'});
+  assert.equal(partnerLead.status,201);
+  const partnerLeadId=partnerLead.body.lead.id;
+  const adminPartnerLeads=await agent.get(`/api/leads?source=CHANNEL_PARTNER&channelPartnerId=${partnerId}`);
+  assert.equal(adminPartnerLeads.status,200);
+  assert.equal(adminPartnerLeads.body.leads.some((item:any)=>item.id===partnerLeadId&&item.channel_partner_name==='Portal Partner'),true);
+  assert.equal((await agent.post(`/api/leads/${partnerLeadId}/pipeline-transition`).send({toStage:'CONTACTED',contactOutcome:'INTERESTED',leadType:'HOT',remark:'Customer contacted successfully'})).status,200);
+  const progressedDashboard=await partnerAgent.get('/api/partner/dashboard');
+  assert.equal(progressedDashboard.body.leads.find((item:any)=>item.id===partnerLeadId)?.workflow_status,'CONTACTED');
+  const upload=async(documentType:string,fileName:string)=>partnerAgent.post('/api/partner/documents').send({documentType,fileName,mimeType:'text/plain',data:`data:text/plain;base64,${Buffer.from(fileName).toString('base64')}`});
+  assert.equal((await upload('AADHAAR','aadhaar.txt')).status,201);
+  assert.equal((await upload('PAN','pan.txt')).status,201);
+  const documents=(await agent.get(`/api/channel-partners/${partnerId}/documents`)).body.documents;
+  assert.equal(documents.length,2);
+  const pdfUpload=await partnerAgent.post('/api/partner/documents').send({documentType:'RERA_CERTIFICATE',fileName:'rera.pdf',mimeType:'application/pdf',data:`data:application/pdf;base64,${Buffer.from('%PDF-1.4').toString('base64')}`});
+  assert.equal(pdfUpload.status,201);
+  for(const client of [partnerAgent,agent]){const base=client===agent?'/api/channel-partners/documents':'/api/partner/documents';
+    const inline=await client.get(`${base}/${pdfUpload.body.document.id}/download?inline=1`);assert.match(String(inline.headers['content-disposition']),/^inline/);assert.equal(inline.headers['content-type'],'application/pdf');
+    const attached=await client.get(`${base}/${pdfUpload.body.document.id}/download`);assert.match(String(attached.headers['content-disposition']),/^attachment/);
+    const textDoc=await client.get(`${base}/${documents[0].id}/download?inline=1`);assert.match(String(textDoc.headers['content-disposition']),/^attachment/);}
+  assert.equal((await agent.patch(`/api/channel-partners/${partnerId}/verification`).send({status:'VERIFIED'})).status,200);
+  assert.equal((await agent.patch(`/api/channel-partners/${partnerId}/metrics`).send({leads:12,bookings:3,commission:75000,paid:25000})).status,200);
+  const dashboard=await partnerAgent.get('/api/partner/dashboard');
+  assert.equal(dashboard.status,200);
+  assert.equal(dashboard.body.partner.leads,12);
+  assert.equal(Number(dashboard.body.partner.commission_total),75000);
+  assert.equal(dashboard.body.documents.every((item:any)=>item.verification_status==='VERIFIED'),true);
+  assert.equal((await partnerAgent.get('/api/leads')).status,401);
+  const lead=(await agent.post('/api/leads').send({...baseLead(),contact:'9000055555'})).body.lead;
+  assert.equal((await agent.delete(`/api/leads/${lead.id}`)).status,204);
+  assert.equal((await agent.get(`/api/leads/${lead.id}`)).status,404);
+});

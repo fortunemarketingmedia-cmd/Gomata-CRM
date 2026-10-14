@@ -37,7 +37,7 @@ export function LeadBatchFields({
 
   return <div className="lead-batch-fields">
     {rows.map((row, index) => <section className="lead-batch-entry" key={row.key}>
-      {rows.length > 1 && <div className="lead-batch-entry-head"><div><b>{index + 1}</b><span><strong>Lead {index + 1}</strong><small>Customer enquiry details</small></span></div>{index > 0 && <button type="button" className="icon-button" onClick={() => remove(row.key)} aria-label={`Remove lead ${index + 1}`}><X /></button>}</div>}
+      {rows.length > 1 && <div className="lead-batch-entry-head"><div><b>{index + 1}</b><span><strong>Lead {index + 1}</strong><small>Customer enquiry details</small></span></div><button type="button" className="icon-button" onClick={() => remove(row.key)} aria-label={`Remove lead ${index + 1}`}><X /></button></div>}
       <LeadFormFields
         form={row.form}
         set={(field, value) => update(row.key, field, value)}

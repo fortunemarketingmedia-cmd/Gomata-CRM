@@ -13,6 +13,8 @@ import {
   CircleDot,
   Clock3,
   Edit3,
+  Download,
+  FileSpreadsheet,
   Flame,
   History,
   Link2,
@@ -27,9 +29,11 @@ import {
   Sparkles,
   ThermometerSnowflake,
   ThermometerSun,
+  Trash2,
   UserCheck,
   UserPlus,
   UserRound,
+  Upload,
   X
 } from '../icons';
 import { api, fmtDate, fmtDateTime } from '../lib/api';
@@ -43,6 +47,7 @@ type Details = {
   activities: Activity[];
   followups: Followup[];
   bookings: Array<{id:number;plot_id:number;status:string;quoted_price:number;token_amount:number;booking_date:string;plot_number:string;project_name:string;paid_amount:number}>;
+  documents: Array<{id:number;document_type:string;file_name:string;mime_type:string;file_size:number;created_at:string}>;
 };
 
 const stages = [
@@ -61,6 +66,7 @@ export function LeadDetailPage() {
   const [editing, setEditing] = useState(false);
   const [remark, setRemark] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
 
   const [edit, setEdit] = useState({
     name: '',
@@ -80,6 +86,7 @@ export function LeadDetailPage() {
   const [query] = useSearchParams();
   const { user } = useAuth();
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const deleteLead=async()=>{if(!data||!window.confirm(`Delete ${data.lead.name}? This removes the lead from active CRM lists.`))return;try{await api(`/leads/${data.lead.id}`,{method:'DELETE'});toast.show('Lead deleted');nav('/gre')}catch(error:any){toast.show(error.message,'error')}};
 
   const load = () =>
     api<Details>(`/leads/${id}`)
@@ -203,6 +210,7 @@ export function LeadDetailPage() {
           </div>
         </div>
         <div className="hero-actions">
+          {canManage&&<button className="secondary danger-text" onClick={()=>void deleteLead()}><Trash2/>Delete Lead</button>}
           <button className="secondary" onClick={() => setEditing(!editing)}>
             {editing ? <X /> : <Pencil />}
             {editing ? 'Close Edit' : 'Edit Lead'}
@@ -462,6 +470,32 @@ export function LeadDetailPage() {
             )}
           </section>
 
+          <section className="card document-section">
+            <div className="card-head">
+              <div>
+                <span className="eyebrow">CUSTOMER DOCUMENTS</span>
+                <h3>Profile documents</h3>
+                <p>KYC, enquiry and supporting files remain available before and after booking.</p>
+              </div>
+              <button className="secondary" onClick={() => setUploadingDocument(true)}>
+                <Upload /> Upload document
+              </button>
+            </div>
+            <div className="document-list">
+              {data.documents.map(document => (
+                <a href={`/api/leads/documents/${document.id}/download`} key={document.id} download>
+                  <FileSpreadsheet />
+                  <span>
+                    <strong>{document.file_name}</strong>
+                    <small>{document.document_type.replaceAll('_', ' ')} · {(document.file_size / 1024).toFixed(1)} KB · {fmtDate(document.created_at)}</small>
+                  </span>
+                  <Download />
+                </a>
+              ))}
+              {!data.documents.length && <p className="muted">No customer documents uploaded yet.</p>}
+            </div>
+          </section>
+
           {/* Lead Journey & Activity History (Immutable audit trail) */}
           <section className="card activity-card">
             <div className="card-head">
@@ -625,8 +659,18 @@ export function LeadDetailPage() {
           </section>
         </aside>
       </div>
+      {uploadingDocument && <LeadDocumentModal leadId={Number(id)} onClose={() => setUploadingDocument(false)} onDone={() => { setUploadingDocument(false); toast.show('Customer document uploaded'); void load(); }} />}
     </>
   );
+}
+
+function LeadDocumentModal({leadId,onClose,onDone}:{leadId:number;onClose:()=>void;onDone:()=>void}) {
+  const [type,setType]=useState('KYC');
+  const [file,setFile]=useState<File|null>(null);
+  const [busy,setBusy]=useState(false);
+  const toast=useToast();
+  const submit=async(event:React.FormEvent)=>{event.preventDefault();if(!file)return;setBusy(true);try{if(file.size>5*1024*1024)throw new Error('Document must be 5 MB or smaller');const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error('Could not read document'));reader.readAsDataURL(file)});await api(`/leads/${leadId}/documents`,{method:'POST',body:JSON.stringify({documentType:type,fileName:file.name,mimeType:file.type||'application/octet-stream',data})});onDone()}catch(error:any){toast.show(error.message,'error')}finally{setBusy(false)}};
+  return <div className="modal-layer"><div className="modal small"><div className="modal-head"><div><span className="eyebrow">CUSTOMER PROFILE</span><h2>Upload document</h2></div><button className="icon-button" onClick={onClose}><X/></button></div><form onSubmit={submit}><label>Document type<select value={type} onChange={event=>setType(event.target.value)}><option>KYC</option><option>PAN</option><option>AADHAAR</option><option>ENQUIRY_FORM</option><option>INCOME_PROOF</option><option>AGREEMENT_DRAFT</option><option>OTHER</option></select></label><label>File (maximum 5 MB)<input type="file" required accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={event=>setFile(event.target.files?.[0]||null)}/></label><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={busy}>{busy?'Uploading…':'Upload document'}</button></div></form></div></div>;
 }
 
 function Info({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {

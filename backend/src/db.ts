@@ -213,6 +213,18 @@ export async function migrate(db: Db) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS lead_documents (
+      id BIGSERIAL PRIMARY KEY,
+      lead_id BIGINT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+      document_type VARCHAR(60) NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      mime_type VARCHAR(100) NOT NULL,
+      file_size INTEGER NOT NULL CHECK(file_size > 0 AND file_size <= 5242880),
+      file_data BYTEA NOT NULL,
+      uploaded_by BIGINT NOT NULL REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS campaigns (
       id BIGSERIAL PRIMARY KEY,
       name VARCHAR(180) NOT NULL,
@@ -258,6 +270,14 @@ export async function migrate(db: Db) {
       file_size INTEGER NOT NULL CHECK(file_size > 0 AND file_size <= 5242880),
       file_data BYTEA NOT NULL,
       uploaded_by BIGINT NOT NULL REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS channel_partner_sessions (
+      id BIGSERIAL PRIMARY KEY,
+      partner_id BIGINT NOT NULL REFERENCES channel_partners(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -348,6 +368,56 @@ export async function migrate(db: Db) {
       UNIQUE(partner_id,booking_id)
     );
 
+    CREATE TABLE IF NOT EXISTS project_sales_assignments (
+      project_id BIGINT NOT NULL REFERENCES realestate_projects(id) ON DELETE CASCADE,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      priority INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(project_id,user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS payment_plans (
+      id BIGSERIAL PRIMARY KEY,
+      project_id BIGINT NOT NULL REFERENCES realestate_projects(id) ON DELETE CASCADE,
+      name VARCHAR(150) NOT NULL,
+      description VARCHAR(800) NOT NULL DEFAULT '',
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_by BIGINT NOT NULL REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(project_id,name)
+    );
+
+    CREATE TABLE IF NOT EXISTS payment_plan_milestones (
+      id BIGSERIAL PRIMARY KEY,
+      payment_plan_id BIGINT NOT NULL REFERENCES payment_plans(id) ON DELETE CASCADE,
+      label VARCHAR(120) NOT NULL,
+      percentage NUMERIC(6,3) NOT NULL CHECK(percentage > 0 AND percentage <= 100),
+      due_days INTEGER NOT NULL DEFAULT 0 CHECK(due_days BETWEEN 0 AND 3650),
+      sequence INTEGER NOT NULL,
+      UNIQUE(payment_plan_id,sequence)
+    );
+
+    CREATE TABLE IF NOT EXISTS plot_holds (
+      id BIGSERIAL PRIMARY KEY,
+      plot_id BIGINT NOT NULL REFERENCES plots(id) ON DELETE CASCADE,
+      lead_id BIGINT REFERENCES leads(id) ON DELETE SET NULL,
+      held_until TIMESTAMPTZ NOT NULL,
+      reason VARCHAR(500) NOT NULL DEFAULT '',
+      status VARCHAR(12) NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE','RELEASED','EXPIRED','CONVERTED')),
+      created_by BIGINT NOT NULL REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      released_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE IF NOT EXISTS commission_slabs (
+      id BIGSERIAL PRIMARY KEY,
+      partner_id BIGINT NOT NULL REFERENCES channel_partners(id) ON DELETE CASCADE,
+      min_bookings INTEGER NOT NULL CHECK(min_bookings > 0),
+      max_bookings INTEGER CHECK(max_bookings IS NULL OR max_bookings >= min_bookings),
+      commission_type VARCHAR(15) NOT NULL CHECK(commission_type IN ('PERCENT','FIXED')),
+      commission_value NUMERIC(16,2) NOT NULL CHECK(commission_value >= 0),
+      UNIQUE(partner_id,min_bookings)
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key VARCHAR(100) PRIMARY KEY,
       value TEXT NOT NULL,
@@ -426,6 +496,32 @@ export async function migrate(db: Db) {
     ALTER TABLE leads ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(16);
     ALTER TABLE plot_bookings ADD COLUMN IF NOT EXISTS campaign_id BIGINT REFERENCES campaigns(id) ON DELETE SET NULL;
     ALTER TABLE plot_bookings ADD COLUMN IF NOT EXISTS channel_partner_id BIGINT REFERENCES channel_partners(id) ON DELETE SET NULL;
+    ALTER TABLE leads ADD COLUMN IF NOT EXISTS first_contacted_at TIMESTAMPTZ;
+    ALTER TABLE leads ADD COLUMN IF NOT EXISTS response_sla_due_at TIMESTAMPTZ;
+    ALTER TABLE leads ADD COLUMN IF NOT EXISTS response_sla_alerted_at TIMESTAMPTZ;
+    ALTER TABLE leads ADD COLUMN IF NOT EXISTS partner_lock_until TIMESTAMPTZ;
+    ALTER TABLE plots ADD COLUMN IF NOT EXISTS phase VARCHAR(80) NOT NULL DEFAULT '';
+    ALTER TABLE plots ADD COLUMN IF NOT EXISTS tower VARCHAR(80) NOT NULL DEFAULT '';
+    ALTER TABLE plots ADD COLUMN IF NOT EXISTS wing VARCHAR(80) NOT NULL DEFAULT '';
+    ALTER TABLE plots ADD COLUMN IF NOT EXISTS floor VARCHAR(80) NOT NULL DEFAULT '';
+    ALTER TABLE plot_bookings ADD COLUMN IF NOT EXISTS payment_plan_id BIGINT REFERENCES payment_plans(id) ON DELETE SET NULL;
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS rera_number VARCHAR(80) NOT NULL DEFAULT '';
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS gstin VARCHAR(20) NOT NULL DEFAULT '';
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS aadhaar_number VARCHAR(12) NOT NULL DEFAULT '';
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS pan_number VARCHAR(10) NOT NULL DEFAULT '';
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS password_hash TEXT;
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS manual_leads INTEGER CHECK(manual_leads >= 0);
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS manual_bookings INTEGER CHECK(manual_bookings >= 0);
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS manual_commission NUMERIC(16,2) CHECK(manual_commission >= 0);
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS manual_paid NUMERIC(16,2) CHECK(manual_paid >= 0);
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS verification_status VARCHAR(15) NOT NULL DEFAULT 'PENDING';
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+    ALTER TABLE channel_partners ADD COLUMN IF NOT EXISTS verified_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE channel_partner_documents ALTER COLUMN uploaded_by DROP NOT NULL;
+    ALTER TABLE channel_partner_documents ADD COLUMN IF NOT EXISTS uploaded_by_partner BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE channel_partner_documents ADD COLUMN IF NOT EXISTS verification_status VARCHAR(15) NOT NULL DEFAULT 'PENDING';
+    ALTER TABLE channel_partner_documents ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+    ALTER TABLE channel_partner_documents ADD COLUMN IF NOT EXISTS verified_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
     CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(LOWER(email));
     CREATE INDEX IF NOT EXISTS idx_leads_alt_phone ON leads(alternate_phone);
     CREATE INDEX IF NOT EXISTS idx_leads_campaign ON leads(campaign_id);
@@ -433,7 +529,15 @@ export async function migrate(db: Db) {
     CREATE INDEX IF NOT EXISTS idx_site_visits_date ON site_visits(scheduled_at,status);
     CREATE INDEX IF NOT EXISTS idx_whatsapp_lead ON whatsapp_messages(lead_id,sent_at DESC);
     CREATE INDEX IF NOT EXISTS idx_campaign_dates ON campaigns(status,start_date,end_date);
+    CREATE INDEX IF NOT EXISTS idx_leads_sla ON leads(response_sla_due_at,first_contacted_at) WHERE archived_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_plot_holds_active ON plot_holds(plot_id,held_until) WHERE status='ACTIVE';
+    CREATE INDEX IF NOT EXISTS idx_plan_project ON payment_plans(project_id,active);
+    CREATE INDEX IF NOT EXISTS idx_commission_slabs_partner ON commission_slabs(partner_id,min_bookings);
+    CREATE INDEX IF NOT EXISTS idx_lead_documents_lead ON lead_documents(lead_id,created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_partner_sessions_token ON channel_partner_sessions(token_hash,expires_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_partners_email ON channel_partners(LOWER(email)) WHERE email IS NOT NULL AND email<>'';
     CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_event_user ON notifications(user_id,event_id) WHERE event_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_action_user ON notifications(user_id,notification_type,action_url) WHERE action_url IS NOT NULL AND notification_type IN ('SLA','PAYMENT_DUE');
   `);
 
   await db.query('ALTER TABLE calendar_events DROP CONSTRAINT IF EXISTS calendar_events_event_type_check');
@@ -494,6 +598,8 @@ export async function migrate(db: Db) {
       ,('default_area_unit','SQ_FT')
       ,('default_max_investors','1')
       ,('default_token_percent','5')
+      ,('lead_response_sla_minutes','30')
+      ,('partner_lead_lock_days','60')
     ON CONFLICT(key) DO NOTHING
   `);
 
